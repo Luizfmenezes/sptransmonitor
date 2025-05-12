@@ -1,35 +1,59 @@
+import requests
 from datetime import datetime
-import random
 
-# Programado fixo para ambos os sentidos
+# TOKEN DA SUA CONTA
+TOKEN = "b2ef23d8961253e24ff6ffd4e6beb4cc75c79a7323f6a3ab1cfa45e42d8d681b"
+API_BASE = "http://api.olhovivo.sptrans.com.br/v2.1"
+
+# Linha 2013-10 (código base sem hífen)
+CODIGO_LINHA = 2013
+
+# Programado por sentido
 programado = {
     "TPTS": 149,
     "TSTP": 149
 }
 
-# Simulação de monitorado (exemplo)
+# Autenticar e manter sessão ativa
+def autenticar():
+    s = requests.Session()
+    r = s.post(f"{API_BASE}/Login/Autenticar?token={TOKEN}")
+    if r.ok and r.text.lower() == "true":
+        return s
+    else:
+        raise Exception("Erro na autenticação SPTrans")
+
+# Buscar dados reais da linha
 def get_monitoramento():
-    # Aqui você pode substituir pela consulta real à API quando funcionar
-    monitorado = {
-        "TPTS": random.randint(120, 149),
-        "TSTP": random.randint(100, 149)
-    }
+    try:
+        sessao = autenticar()
+        resposta = sessao.get(f"{API_BASE}/Posicao/Linha?codigoLinha={CODIGO_LINHA}")
+        dados = resposta.json()
 
-    resultado = []
-    for sentido in ["TPTS", "TSTP"]:
-        prog = programado[sentido]
-        moni = monitorado[sentido]
-        percentual = round((moni / prog) * 100, 2)
-        perdas = prog - moni
+        # Separar veículos por sentido
+        veiculos = dados.get("vs", [])
+        tpts = [v for v in veiculos if v["p"] == 1]  # Sentido 1
+        tstp = [v for v in veiculos if v["p"] == 2]  # Sentido 2
 
-        resultado.append({
-            "sentido": sentido,
-            "data": datetime.now().strftime("%Y-%m-%d"),
-            "programado": prog,
-            "monitorado": moni,
-            "percentual": percentual,
-            "perdas": perdas,
-            "perdas_real": perdas  # Pode aplicar fator se quiser ajustar
-        })
+        resultados = []
 
-    return resultado
+        for sentido, lista, nome in [("TPTS", tpts, "1"), ("TSTP", tstp, "2")]:
+            prog = programado[sentido]
+            moni = len(lista)
+            percentual = round((moni / prog) * 100, 2)
+            perdas = prog - moni
+
+            resultados.append({
+                "sentido": sentido,
+                "data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "programado": prog,
+                "monitorado": moni,
+                "percentual": percentual,
+                "perdas": perdas,
+                "perdas_real": perdas
+            })
+
+        return resultados
+
+    except Exception as e:
+        return {"erro": str(e)}
